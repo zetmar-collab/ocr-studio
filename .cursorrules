@@ -1,0 +1,22 @@
+Projekt: OCR Studio
+Autor: Marek Zettel
+Wersja: 0.1.0
+
+Stack:
+- Python 3.11+
+- CustomTkinter (desktop UI Windows)
+- Tesseract + pytesseract (OCR obrazow)
+- OCRmyPDF (OCR PDF)
+- Spylls/Hunspell (pisownia)
+
+Cel aplikacji:
+- Prosta i przyjazna aplikacja desktopowa do OCR obrazow i PDF.
+- Obsluga skanera na Windows (WIA), import z pliku, OCR wielojezykowy.
+- Korekta pisowni przed eksportem i eksport do TXT/DOCX.
+- Przelaczanie motywu jasny/ciemny.
+
+Czego NIE robic:
+- Nie zapisywac sekretow ani kluczy API w repo.
+- Nie tworzyc zbednych frameworkow webowych i backendu serwerowego.
+- Nie uzalezniac podstawowych funkcji od platnych API.
+- Nie usuwac/zmieniac danych uzytkownika bez potwierdzenia.

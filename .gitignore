@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Build PyInstaller
+build/
+dist/
+*.spec
+
+# Instalator
+installer/output/
+
+# Dane uzytkownika (pobierane w aplikacji)
+data/tessdata/*.traineddata
+data/dictionaries/**/*
+data/custom_dictionaries/*
+data/tmp/*
+!data/tessdata/.gitkeep
+!data/dictionaries/.gitkeep
+!data/custom_dictionaries/.gitkeep
+!data/tmp/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.log
+
+# OS
+Thumbs.db
+Desktop.ini
