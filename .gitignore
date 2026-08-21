@@ -11,10 +11,17 @@ build/
 dist/
 *.spec
 
+# Wbudowany silnik OCR - odtwarzany przez scripts/vendor_tesseract.py
+vendor/
+
 # Instalator
 installer/output/
+installer/msix/PackageRoot/
+installer/msix/output/
+installer/msix/Images/
 
 # Dane uzytkownika (pobierane w aplikacji)
+data/settings.json
 data/tessdata/*.traineddata
 data/dictionaries/**/*
 data/custom_dictionaries/*

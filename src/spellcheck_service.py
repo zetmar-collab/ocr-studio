@@ -10,6 +10,14 @@ from .config import CUSTOM_DICTS_DIR, DICTS_DIR
 WORD_RE = re.compile(r"[A-Za-zÀ-ÿĄąĆćĘęŁłŃńÓóŚśŹźŻż]+(?:['-][A-Za-zÀ-ÿĄąĆćĘęŁłŃńÓóŚśŹźŻż]+)?")
 
 
+class SpellDictionaryMissingError(FileNotFoundError):
+    """Raised when the Hunspell dictionary for `dict_code` is not installed."""
+
+    def __init__(self, dict_code: str) -> None:
+        self.dict_code = dict_code
+        super().__init__(dict_code)
+
+
 class SpellcheckService:
     def __init__(self, dict_code: str) -> None:
         self.dict_code = dict_code
@@ -20,9 +28,7 @@ class SpellcheckService:
         aff = DICTS_DIR / dict_code / f"{dict_code}.aff"
         dic = DICTS_DIR / dict_code / f"{dict_code}.dic"
         if not aff.exists() or not dic.exists():
-            raise FileNotFoundError(
-                f"Brak slownika {dict_code}. Zainstaluj jezyk pisowni przed sprawdzeniem."
-            )
+            raise SpellDictionaryMissingError(dict_code)
         # spylls expects a dictionary stem path, e.g. ".../pl_PL"
         stem_path = DICTS_DIR / dict_code / dict_code
         return Dictionary.from_files(str(stem_path))

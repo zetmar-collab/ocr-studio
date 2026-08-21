@@ -6,7 +6,7 @@ from pathlib import Path
 
 APP_NAME = "OCR Studio"
 APP_AUTHOR = "Marek Zettel"
-APP_VERSION = "0.1.8"
+APP_VERSION = "0.2.1"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -21,11 +21,26 @@ def _resolve_runtime_data_dir() -> Path:
     return BASE_DIR / "data"
 
 
+def _resolve_bundled_tesseract_dir() -> Path:
+    """Silnik OCR dolaczony do pakietu - dzieki niemu aplikacja dziala
+    natychmiast po instalacji, bez pobierania i bez praw administratora."""
+    if getattr(sys, "frozen", False):
+        # PyInstaller rozpakowuje dodane dane do _MEIPASS (w buildzie onedir
+        # jest to katalog _internal obok pliku .exe).
+        bundle_root = Path(getattr(sys, "_MEIPASS", BASE_DIR))
+        return bundle_root / "tesseract"
+    return BASE_DIR / "vendor" / "tesseract"
+
+
 DATA_DIR = _resolve_runtime_data_dir()
 TMP_DIR = DATA_DIR / "tmp"
 TESSDATA_DIR = DATA_DIR / "tessdata"
 DICTS_DIR = DATA_DIR / "dictionaries"
 CUSTOM_DICTS_DIR = DATA_DIR / "custom_dictionaries"
+
+BUNDLED_TESSERACT_DIR = _resolve_bundled_tesseract_dir()
+BUNDLED_TESSERACT_EXE = BUNDLED_TESSERACT_DIR / "tesseract.exe"
+BUNDLED_TESSDATA_DIR = BUNDLED_TESSERACT_DIR / "tessdata"
 
 for path in [DATA_DIR, TMP_DIR, TESSDATA_DIR, DICTS_DIR, CUSTOM_DICTS_DIR]:
     path.mkdir(parents=True, exist_ok=True)

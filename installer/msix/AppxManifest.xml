@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="MarekZettel-zetmar.StudioOCR"
+    Publisher="CN=15A53D32-C868-48EE-B700-5DBB5449CA1B"
+    Version="__VERSION__.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Studio OCR</DisplayName>
+    <PublisherDisplayName>Marek Zettel - zetmar</PublisherDisplayName>
+    <Logo>Images\StoreLogo.png</Logo>
+  </Properties>
+
+  <Resources>
+    <Resource Language="pl-PL" />
+    <Resource Language="en-US" />
+  </Resources>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Applications>
+    <Application Id="StudioOCR" Executable="OCR Studio.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Studio OCR"
+        Description="OCR obrazow i PDF, skanowanie dokumentow, sprawdzanie pisowni i eksport do TXT/DOCX."
+        BackgroundColor="#1A202C"
+        Square150x150Logo="Images\Square150x150Logo.png"
+        Square44x44Logo="Images\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Images\Wide310x150Logo.png" Square71x71Logo="Images\Square71x71Logo.png" Square310x310Logo="Images\Square310x310Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+
+</Package>

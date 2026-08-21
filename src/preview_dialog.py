@@ -6,6 +6,8 @@ from typing import Callable
 import customtkinter as ctk
 from PIL import Image, ImageTk
 
+from .i18n import I18n
+
 
 class ScanPreviewDialog(ctk.CTkToplevel):
     """Podglad zeskanowanego dokumentu z opcja uruchomienia OCR."""
@@ -15,19 +17,22 @@ class ScanPreviewDialog(ctk.CTkToplevel):
         master: ctk.CTk,
         file_path: Path,
         on_ocr: Callable[[], None],
+        i18n: I18n | None = None,
     ) -> None:
         super().__init__(master)
         self.file_path = file_path
         self.on_ocr = on_ocr
+        self.i18n = i18n or I18n()
+        t = self.i18n.t
 
-        self.title("Podglad skanu")
+        self.title(t("preview.title"))
         self.geometry("820x640")
         self.transient(master)
         self.grab_set()
 
         header = ctk.CTkLabel(
             self,
-            text=f"Zeskanowano: {file_path.name}",
+            text=t("preview.scanned", name=file_path.name),
             font=ctk.CTkFont(size=16, weight="bold"),
         )
         header.pack(padx=16, pady=(14, 8), anchor="w")
@@ -43,14 +48,14 @@ class ScanPreviewDialog(ctk.CTkToplevel):
 
         ctk.CTkButton(
             buttons,
-            text="Dokonaj OCR",
+            text=t("btn.do_ocr"),
             fg_color="#2f9e44",
             hover_color="#237a35",
             command=self._start_ocr,
             width=180,
         ).pack(side="right", padx=(8, 0))
 
-        ctk.CTkButton(buttons, text="Zamknij", command=self.destroy, width=120).pack(side="right")
+        ctk.CTkButton(buttons, text=t("btn.close"), command=self.destroy, width=120).pack(side="right")
 
     def _render_preview(self) -> None:
         suffix = self.file_path.suffix.lower()
@@ -62,7 +67,7 @@ class ScanPreviewDialog(ctk.CTkToplevel):
         except Exception as exc:
             ctk.CTkLabel(
                 self.preview_frame,
-                text=f"Nie udalo sie wyswietlic podgladu: {exc}",
+                text=self.i18n.t("preview.render_error", error=str(exc)),
                 wraplength=700,
             ).pack(padx=12, pady=12)
 
@@ -80,7 +85,7 @@ class ScanPreviewDialog(ctk.CTkToplevel):
         page_count = len(pdf)
         ctk.CTkLabel(
             self.preview_frame,
-            text=f"PDF — {page_count} stron(y). Ponizej podglad pierwszej strony.",
+            text=self.i18n.t("preview.pdf_info", pages=page_count),
             font=ctk.CTkFont(weight="bold"),
         ).pack(padx=8, pady=(8, 4), anchor="w")
 

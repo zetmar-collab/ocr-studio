@@ -23,6 +23,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-build.txt
 
+      # Silnik OCR jest wbudowywany w aplikacje, ale jego binaria nie sa
+      # trzymane w repozytorium (vendor/ jest w .gitignore). Instalujemy
+      # Tesseract na runnerze i odtwarzamy z niego vendor/ przed buildem.
+      - name: Install Tesseract (zrodlo wbudowanego silnika)
+        run: choco install tesseract -y
+
+      - name: Vendor OCR engine
+        run: python scripts/vendor_tesseract.py
+
       - name: Build EXE
         run: python build_exe.py
 

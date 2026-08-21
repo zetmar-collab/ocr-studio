@@ -5,7 +5,7 @@
 #define MyAppPublisher "Marek Zettel"
 #define MyAppURL "https://github.com/zetmar-collab/ocr-studio"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.8"
+  #define MyAppVersion "0.2.1"
 #endif
 
 [Setup]
