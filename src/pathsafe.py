@@ -12,6 +12,7 @@ import ctypes
 import hashlib
 import os
 import shutil
+import stat
 import sys
 from pathlib import Path
 
@@ -106,28 +107,40 @@ def _restrict_to_current_user(path: Path) -> None:
     )
 
 
-def _private_staging_dir(program_data: str, staging_name: str, leaf: str) -> Path:
-    r"""Prywatny katalog roboczy per uzytkownik: ProgramData\<nazwa>\<SID>\<leaf>.
+def _is_reparse_point(path: Path) -> bool:
+    """Junction lub dowiazanie symboliczne - moglyby przekierowac kopie poza nasz katalog."""
+    attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+    return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 
-    SID jest zawsze ASCII i unikalny dla konta. Katalog nadrzedny jest wspolny,
-    wiec inny uzytkownik moglby go wczesniej utworzyc i podstawic pliki - dlatego
-    istniejacy katalog uzywamy tylko wtedy, gdy nalezy do nas, a nowy zabezpieczamy
-    DACL tylko dla wlasciciela. Rzuca OSError, gdy to sie nie uda.
+
+def _private_staging_dir(program_data: str, staging_name: str, leaf: str) -> Path:
+    r"""Prywatny katalog roboczy per uzytkownik: ProgramData\<nazwa>-<SID>\<leaf>.
+
+    SID jest zawsze ASCII i unikalny dla konta. Nie ma wspolnego katalogu
+    nadrzednego, w ktorym ktos moglby podmienic nasz podkatalog. Tworzenie jest
+    atomowe (mkdir bez exist_ok), a wlasciciela sprawdzamy ZAWSZE - rowniez po
+    wlasnym utworzeniu, bo miedzy sprawdzeniem istnienia a utworzeniem inny
+    uzytkownik moglby podstawic katalog. Odrzucamy punkty reparse. Rzuca
+    OSError, gdy czegos nie da sie zagwarantowac.
     """
     import win32security
 
     sid = win32security.ConvertSidToStringSid(_current_user_sid())
-    user_dir = Path(program_data) / staging_name / sid
-    user_dir.parent.mkdir(parents=True, exist_ok=True)
-    existed = user_dir.exists()
-    user_dir.mkdir(exist_ok=True)
-    if existed:
-        if not _owned_by_current_user(user_dir):
-            raise OSError("katalog roboczy nalezy do innego uzytkownika")
-    else:
-        _restrict_to_current_user(user_dir)
-    staging = user_dir / leaf
+    base = Path(program_data) / f"{staging_name}-{sid}"
+    try:
+        os.mkdir(base)
+    except FileExistsError:
+        pass
+    if _is_reparse_point(base):
+        raise OSError("katalog roboczy jest punktem reparse")
+    if not _owned_by_current_user(base):
+        raise OSError("katalog roboczy nalezy do innego uzytkownika")
+    _restrict_to_current_user(base)  # idempotentne; dzialamy juz na katalogu, ktory jest nasz
+
+    staging = base / leaf
     staging.mkdir(exist_ok=True)
+    if _is_reparse_point(staging):
+        raise OSError("podkatalog roboczy jest punktem reparse")
     return staging
 
 

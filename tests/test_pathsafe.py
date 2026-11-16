@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -49,8 +50,8 @@ def test_unsafe_directory_falls_back_to_staging_copy(tmp_path, monkeypatch, fake
 
     result = ansi_safe_dir(unsafe, copy_files=["deu.traineddata"])
 
-    assert result.parent.parent == program_data / "StudioOCR"  # StudioOCR\<SID>\tessdata
-    assert result.parent.name.startswith("S-1-5-")
+    assert result.parent.parent == program_data  # bez wspolnego katalogu nadrzednego
+    assert result.parent.name.startswith("StudioOCR-S-1-5-")
     assert (result / "deu.traineddata").read_bytes() == b"x" * 10
     assert not (result / "inny.plik").exists()  # kopiujemy tylko potrzebne pliki
 
@@ -132,3 +133,41 @@ def test_staging_is_ascii_and_stable_between_calls(tmp_path, monkeypatch):
     (unsafe / "deu.traineddata").write_bytes(b"x")
     first = pathsafe.ansi_safe_dir(unsafe)
     assert str(first).isascii() and pathsafe.ansi_safe_dir(unsafe) == first
+
+
+def test_ownership_is_checked_even_for_a_directory_we_just_created(tmp_path, monkeypatch):
+    # regresja z przegladu bezpieczenstwa: nowo utworzony katalog nie byl sprawdzany, a miedzy
+    # exists() a mkdir() inny uzytkownik mogl go podstawic
+    unsafe = staging_setup(tmp_path, monkeypatch)
+    (unsafe / "deu.traineddata").write_bytes(b"x")
+    monkeypatch.setattr(pathsafe, "_owned_by_current_user", lambda p: False)
+    with pytest.raises(UnsafePathError):
+        pathsafe.ansi_safe_dir(unsafe)  # katalog jest swiezo utworzony, a "nalezy do kogos innego"
+
+
+def test_junction_in_place_of_staging_directory_is_refused(tmp_path, monkeypatch):
+    import subprocess
+
+    unsafe = staging_setup(tmp_path, monkeypatch)
+    (unsafe / "deu.traineddata").write_bytes(b"x")
+    program_data = Path(os.environ["ProgramData"])
+    sid = pathsafe._current_user_sid()
+    import win32security
+
+    base = program_data / f"StudioOCR-{win32security.ConvertSidToStringSid(sid)}"
+    elsewhere = tmp_path / "gdzie_indziej"
+    elsewhere.mkdir()
+    made = subprocess.run(["cmd", "/c", "mklink", "/J", str(base), str(elsewhere)], capture_output=True)
+    if made.returncode != 0:
+        pytest.skip("nie mozna utworzyc junction w tym srodowisku")
+    with pytest.raises(UnsafePathError):
+        pathsafe.ansi_safe_dir(unsafe)
+    assert list(elsewhere.iterdir()) == [], "kopia nie moze trafic do miejsca wskazanego przez junction"
+
+
+def test_staging_uses_single_level_without_shared_parent(tmp_path, monkeypatch):
+    unsafe = staging_setup(tmp_path, monkeypatch)
+    (unsafe / "deu.traineddata").write_bytes(b"x")
+    pathsafe.ansi_safe_dir(unsafe)
+    names = [p.name for p in Path(os.environ["ProgramData"]).iterdir()]
+    assert "StudioOCR" not in names and any(n.startswith("StudioOCR-S-1-5-") for n in names)
