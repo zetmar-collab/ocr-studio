@@ -1,94 +1,191 @@
 from __future__ import annotations
 
+import hashlib
+import os
+import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import requests
 
-from .config import CUSTOM_DICTS_DIR, DICTS_DIR, OCR_LANG_MAP, TESSDATA_DIR
+from . import downloads_manifest as manifest
+from .config import (
+    BUNDLED_DICTS_DIR,
+    BUNDLED_TESSDATA_DIR,
+    CUSTOM_DICTS_DIR,
+    DICTS_DIR,
+    OCR_LANG_MAP,
+    TESSDATA_DIR,
+)
+from .jobs import JobCancelled
 
-TESSDATA_BASE_URL = "https://github.com/tesseract-ocr/tessdata_best/raw/main"
-HUNSPELL_BASE_URL = "https://raw.githubusercontent.com/wooorm/dictionaries/main/dictionaries"
+DownloadProgress = Callable[[int, int, str], None]
+_CHUNK = 256 * 1024
+
+
+class DownloadError(RuntimeError):
+    """Pobieranie nie powiodlo sie (siec, serwer, niezgodna suma kontrolna)."""
+
+    def __init__(self, what: str, details: str) -> None:
+        self.what = what
+        self.details = details
+        super().__init__(f"{what}: {details}")
+
+
+def _atomic_download(
+    url: str,
+    target: Path,
+    expected_sha256: str,
+    expected_size: int,
+    *,
+    label: str,
+    progress: DownloadProgress | None = None,
+    cancel: threading.Event | None = None,
+) -> Path:
+    """Pobiera plik do `.part`, sprawdza rozmiar i SHA-256 i dopiero wtedy podmienia cel.
+
+    Dzieki temu przerwane lub uszkodzone pobranie nigdy nie zostawia pliku,
+    ktory aplikacja uznalaby za zainstalowany.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_name(target.name + ".part")
+    digest = hashlib.sha256()
+    received = 0
+    try:
+        with requests.get(url, stream=True, timeout=(10, 60)) as response:
+            response.raise_for_status()
+            with partial.open("wb") as handle:
+                for chunk in response.iter_content(chunk_size=_CHUNK):
+                    if cancel is not None and cancel.is_set():
+                        raise JobCancelled()
+                    if not chunk:
+                        continue
+                    handle.write(chunk)
+                    digest.update(chunk)
+                    received += len(chunk)
+                    if progress:
+                        progress(received, expected_size, label)
+    except JobCancelled:
+        partial.unlink(missing_ok=True)
+        raise
+    except requests.RequestException as exc:
+        partial.unlink(missing_ok=True)
+        raise DownloadError(label, str(exc)) from exc
+    except OSError as exc:
+        partial.unlink(missing_ok=True)
+        raise DownloadError(label, str(exc)) from exc
+
+    if received != expected_size or digest.hexdigest() != expected_sha256:
+        partial.unlink(missing_ok=True)
+        raise DownloadError(label, "pobrany plik jest uszkodzony lub zmieniony (niezgodna suma kontrolna)")
+
+    os.replace(partial, target)
+    return target
 
 
 class LanguageManager:
+    # ---------- jezyki OCR ----------
+
+    @staticmethod
+    def _ocr_candidates(lang_code: str) -> list[Path]:
+        return [TESSDATA_DIR / f"{lang_code}.traineddata", BUNDLED_TESSDATA_DIR / f"{lang_code}.traineddata"]
+
+    def is_ocr_language_available(self, lang_code: str) -> bool:
+        return any(path.exists() for path in self._ocr_candidates(lang_code))
+
     def list_installed_ocr(self) -> list[str]:
-        installed = []
-        for trained in TESSDATA_DIR.glob("*.traineddata"):
-            installed.append(trained.stem)
+        """Jezyki dostepne od razu: wbudowane w pakiet oraz doinstalowane."""
+        installed = set()
+        for directory in (TESSDATA_DIR, BUNDLED_TESSDATA_DIR):
+            if directory.exists():
+                installed.update(path.name.removesuffix(".traineddata") for path in directory.glob("*.traineddata"))
         return sorted(installed)
 
-    def install_ocr_language(self, lang_code: str) -> Path:
-        target = TESSDATA_DIR / f"{lang_code}.traineddata"
-        if target.exists():
-            return target
-        url = f"{TESSDATA_BASE_URL}/{lang_code}.traineddata"
-        response = requests.get(url, timeout=90)
-        response.raise_for_status()
-        target.write_bytes(response.content)
-        return target
+    def install_ocr_language(
+        self,
+        lang_code: str,
+        *,
+        progress: DownloadProgress | None = None,
+        cancel: threading.Event | None = None,
+    ) -> Path:
+        # Jezyk wbudowany w pakiet lub juz pobrany: zadnego dostepu do sieci.
+        for candidate in self._ocr_candidates(lang_code):
+            if candidate.exists():
+                return candidate
+
+        if lang_code not in manifest.TESSDATA_FILES:
+            raise DownloadError(lang_code, "nieznany jezyk OCR")
+        sha256, size = manifest.TESSDATA_FILES[lang_code]
+        return _atomic_download(
+            f"{manifest.TESSDATA_BASE_URL}/{lang_code}.traineddata",
+            TESSDATA_DIR / f"{lang_code}.traineddata",
+            sha256,
+            size,
+            label=f"{lang_code}.traineddata",
+            progress=progress,
+            cancel=cancel,
+        )
 
     def available_ocr_choices(self) -> dict[str, str]:
         return OCR_LANG_MAP.copy()
 
-    def install_spell_dictionary(self, dict_code: str) -> tuple[Path, Path]:
+    # ---------- slowniki pisowni ----------
+
+    @staticmethod
+    def _dict_dirs(dict_code: str) -> list[Path]:
+        return [DICTS_DIR / dict_code, BUNDLED_DICTS_DIR / dict_code]
+
+    def find_spell_dictionary(self, dict_code: str) -> Path | None:
+        """Zwraca sciezke bazowa (bez rozszerzenia) slownika lub None."""
+        for directory in self._dict_dirs(dict_code):
+            if (directory / f"{dict_code}.aff").exists() and (directory / f"{dict_code}.dic").exists():
+                return directory / dict_code
+        return None
+
+    def is_spell_dictionary_available(self, dict_code: str) -> bool:
+        return self.find_spell_dictionary(dict_code) is not None
+
+    def install_spell_dictionary(
+        self,
+        dict_code: str,
+        *,
+        progress: DownloadProgress | None = None,
+        cancel: threading.Event | None = None,
+    ) -> tuple[Path, Path]:
+        existing = self.find_spell_dictionary(dict_code)
+        if existing is not None:
+            return existing.with_suffix(".aff"), existing.with_suffix(".dic")
+
+        repo_code = manifest.SPELL_REPO_CODES.get(dict_code)
+        if repo_code is None:
+            raise DownloadError(dict_code, "nieznany slownik")
+
         lang_dir = DICTS_DIR / dict_code
-        lang_dir.mkdir(parents=True, exist_ok=True)
-
-        aff_path = lang_dir / f"{dict_code}.aff"
-        dic_path = lang_dir / f"{dict_code}.dic"
-
-        repo_code = self._resolve_spell_repo_code(dict_code)
-
-        if not aff_path.exists():
-            aff_url = f"{HUNSPELL_BASE_URL}/{repo_code}/index.aff"
-            response = requests.get(aff_url, timeout=90)
-            response.raise_for_status()
-            aff_path.write_bytes(response.content)
-
-        if not dic_path.exists():
-            dic_url = f"{HUNSPELL_BASE_URL}/{repo_code}/index.dic"
-            response = requests.get(dic_url, timeout=90)
-            response.raise_for_status()
-            dic_path.write_bytes(response.content)
+        paths: dict[str, Path] = {}
+        for ext in ("aff", "dic"):
+            sha256, size = manifest.DICT_FILES[(dict_code, ext)]
+            paths[ext] = _atomic_download(
+                f"{manifest.DICT_BASE_URL}/{repo_code}/index.{ext}",
+                lang_dir / f"{dict_code}.{ext}",
+                sha256,
+                size,
+                label=f"{dict_code}.{ext}",
+                progress=progress,
+                cancel=cancel,
+            )
 
         custom_path = CUSTOM_DICTS_DIR / f"{dict_code}.txt"
         if not custom_path.exists():
+            custom_path.parent.mkdir(parents=True, exist_ok=True)
             custom_path.write_text("", encoding="utf-8")
-
-        return aff_path, dic_path
-
-    def _resolve_spell_repo_code(self, dict_code: str) -> str:
-        candidates: list[str] = []
-        lower = dict_code.lower()
-        candidates.extend([dict_code, lower, lower.replace("_", "-")])
-        if "_" in dict_code:
-            base = dict_code.split("_", 1)[0]
-            candidates.extend([base, base.lower()])
-        if "-" in dict_code:
-            base = dict_code.split("-", 1)[0]
-            candidates.extend([base, base.lower()])
-
-        seen: set[str] = set()
-        ordered_candidates = [c for c in candidates if c and not (c in seen or seen.add(c))]
-
-        for candidate in ordered_candidates:
-            test_url = f"{HUNSPELL_BASE_URL}/{candidate}/index.aff"
-            response = requests.get(test_url, timeout=30)
-            if response.ok:
-                return candidate
-
-        raise RuntimeError(
-            f"Brak slownika dla kodu '{dict_code}'. Sprobuj innego jezyka lub sprawdz polaczenie internetowe."
-        )
+        return paths["aff"], paths["dic"]
 
     def list_installed_spell(self) -> list[str]:
-        installed = []
-        for folder in DICTS_DIR.iterdir():
-            if not folder.is_dir():
+        installed = set()
+        for root in (DICTS_DIR, BUNDLED_DICTS_DIR):
+            if not root.exists():
                 continue
-            code = folder.name
-            aff = folder / f"{code}.aff"
-            dic = folder / f"{code}.dic"
-            if aff.exists() and dic.exists():
-                installed.append(code)
+            for folder in root.iterdir():
+                if folder.is_dir() and self.find_spell_dictionary(folder.name) is not None:
+                    installed.add(folder.name)
         return sorted(installed)

@@ -5,50 +5,75 @@ on:
     tags:
       - "v*"
 
+# Domyslnie tylko odczyt. Uprawnienie do zapisu ma wylacznie job `release`,
+# ktory nie uruchamia zadnego kodu z zewnatrz (choco, pip) - tylko publikuje
+# gotowe artefakty.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-windows:
+  build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.13"
+          python-version: "3.12"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-build.txt
-
-      # Silnik OCR jest wbudowywany w aplikacje, ale jego binaria nie sa
-      # trzymane w repozytorium (vendor/ jest w .gitignore). Instalujemy
-      # Tesseract na runnerze i odtwarzamy z niego vendor/ przed buildem.
+      # Ta sama wersja Tesseract, ktora jest testowana lokalnie i trafia do pakietu
+      # Sklepu. vendor_tesseract.py przerwie build, jesli wersja sie nie zgadza.
       - name: Install Tesseract (zrodlo wbudowanego silnika)
-        run: choco install tesseract -y
-
-      - name: Vendor OCR engine
-        run: python scripts/vendor_tesseract.py
-
-      - name: Build EXE
-        run: python build_exe.py
+        run: choco install tesseract --version=5.3.1.20230401 -y --no-progress
 
       - name: Install Inno Setup
-        run: choco install innosetup -y
+        run: choco install innosetup -y --no-progress
 
-      - name: Build installer
-        shell: pwsh
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Lint and audit
         run: |
-          $version = python -c "from src.config import APP_VERSION; print(APP_VERSION)"
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          & $iscc "installer\OCR_Studio_Setup.iss" "/DMyAppVersion=$version"
+          python -m ruff check .
+          python -m pip_audit -r requirements.txt --no-deps --disable-pip
 
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+      - name: Vendor OCR engine and dictionaries
+        run: |
+          python scripts/vendor_tesseract.py
+          python scripts/vendor_dictionaries.py
+
+      - name: Tests
+        run: python -m pytest -rs
+
+      # Buduje aplikacje, uruchamia ja z --selftest przy PATH BEZ Tesseract
+      # (dokladnie scenariusz czystego komputera, na ktorym wersja 0.2.0 zostala
+      # odrzucona przez certyfikacje Sklepu), pakuje .zip i instalator.
+      - name: Build, self-test and package
+        shell: pwsh
+        run: ./scripts/build_installer.ps1
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          files: |
-            dist/OCR Studio.exe
+          name: release-files
+          if-no-files-found: error
+          path: |
+            dist/StudioOCR_*_portable.zip
             installer/output/OCR_Studio_Setup_*.exe
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-files
+          path: release-files
+
+      - name: Publish release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: release-files/**/*
           generate_release_notes: true

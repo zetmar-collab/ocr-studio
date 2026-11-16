@@ -23,8 +23,12 @@ Write-Host "`n[1/4] Instalacja zaleznosci..." -ForegroundColor Yellow
 python -m pip install -r requirements.txt -q
 python -m pip install -r requirements-build.txt -q
 
-Write-Host "`n[2/4] Budowanie aplikacji (PyInstaller --onedir)..." -ForegroundColor Yellow
-python build_exe.py --onedir
+Write-Host "`n[2/4] Zasoby wbudowane i budowanie aplikacji (PyInstaller --onedir)..." -ForegroundColor Yellow
+python scripts\vendor_tesseract.py
+if ($LASTEXITCODE -ne 0) { throw "Blad przygotowania silnika OCR." }
+python scripts\vendor_dictionaries.py
+if ($LASTEXITCODE -ne 0) { throw "Blad przygotowania slownikow." }
+python build_exe.py
 if ($LASTEXITCODE -ne 0) { throw "Blad budowania aplikacji." }
 
 $AppDir = Join-Path $Root "dist\OCR Studio"

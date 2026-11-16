@@ -1,0 +1,26 @@
+# Konfiguracja narzedzi (projekt nie jest pakietem instalowanym przez pip).
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["vendor", "build", "dist"]
+
+[tool.ruff.lint]
+# E/W styl, F bledy (nieuzywane importy, niezdefiniowane nazwy), I kolejnosc importow,
+# B typowe pulapki, UP nowsze idiomy Pythona.
+select = ["E", "W", "F", "I", "B", "UP"]
+ignore = [
+    "E501",  # dlugosc linii pilnuje formatowanie, nie lint
+    "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "gui: wymaga Tk i okna (pomijany bez ekranu)",
+    "engine: wymaga wbudowanego Tesseract z katalogu vendor/",
+]

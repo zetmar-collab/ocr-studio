@@ -1,11 +1,11 @@
 ; Inno Setup — instalator OCR Studio
 ; Uruchom po zbudowaniu EXE: scripts\build_installer.ps1
 
-#define MyAppName "OCR Studio"
+#define MyAppName "Studio OCR"
 #define MyAppPublisher "Marek Zettel"
 #define MyAppURL "https://github.com/zetmar-collab/ocr-studio"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.2.1"
+  #define MyAppVersion "0.2.2"
 #endif
 
 [Setup]
@@ -24,10 +24,15 @@ OutputDir=output
 OutputBaseFilename=OCR_Studio_Setup_{#MyAppVersion}
 SetupIconFile=..\data\ocr_studio_icon.ico
 UninstallDisplayIcon={app}\OCR Studio.exe
+LicenseFile=..\LICENSE
+InfoAfterFile=..\THIRD-PARTY-NOTICES.md
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-PrivilegesRequired=admin
+; Instalacja dla biezacego uzytkownika - bez UAC (jak wersja ze Sklepu). Mozna wybrac
+; instalacje dla wszystkich uzytkownikow w oknie dialogowym.
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesInstallIn64BitMode=x64compatible
 
 [Languages]
@@ -38,9 +43,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\dist\OCR Studio.exe"; DestDir: "{app}"; DestName: "OCR Studio.exe"; Flags: ignoreversion
-; Ikona (opcjonalnie w katalogu aplikacji)
-Source: "..\data\ocr_studio_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
+; Cala aplikacja w wariancie --onedir (exe + _internal z silnikiem OCR i slownikami).
+Source: "..\dist\OCR Studio\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\OCR Studio.exe"

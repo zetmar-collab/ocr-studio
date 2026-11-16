@@ -22,7 +22,7 @@ installer/msix/Images/
 
 # Dane uzytkownika (pobierane w aplikacji)
 data/settings.json
-data/tessdata/*.traineddata
+data/tessdata/*
 data/dictionaries/**/*
 data/custom_dictionaries/*
 data/tmp/*

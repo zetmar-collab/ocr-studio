@@ -8,9 +8,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from PIL import Image
+from PIL import Image  # noqa: E402
 
-from src.icon_utils import ensure_app_icon
+from src.icon_utils import ensure_app_icon  # noqa: E402
 
 BACKGROUND = (26, 32, 44, 255)  # #1A202C, matches uap:VisualElements BackgroundColor
 OUTPUT_DIR = PROJECT_ROOT / "installer" / "msix" / "Images"

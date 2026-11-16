@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import customtkinter as ctk
-from PIL import Image, ImageTk
+from PIL import Image, ImageOps
 
 from .i18n import I18n
 
@@ -28,7 +28,9 @@ class ScanPreviewDialog(ctk.CTkToplevel):
         self.title(t("preview.title"))
         self.geometry("820x640")
         self.transient(master)
-        self.grab_set()
+        # grab_set() na jeszcze niewidocznym oknie bywa odrzucane przez Tk
+        # ("window not viewable"), wiec czekamy az okno sie pojawi.
+        self.after(100, self._safe_grab)
 
         header = ctk.CTkLabel(
             self,
@@ -40,7 +42,7 @@ class ScanPreviewDialog(ctk.CTkToplevel):
         self.preview_frame = ctk.CTkScrollableFrame(self, width=760, height=480)
         self.preview_frame.pack(padx=16, pady=8, fill="both", expand=True)
 
-        self._photo_ref: ImageTk.PhotoImage | None = None
+        self._image_ref: ctk.CTkImage | None = None
         self._render_preview()
 
         buttons = ctk.CTkFrame(self, fg_color="transparent")
@@ -71,33 +73,41 @@ class ScanPreviewDialog(ctk.CTkToplevel):
                 wraplength=700,
             ).pack(padx=12, pady=12)
 
+    def _safe_grab(self) -> None:
+        try:
+            if self.winfo_exists():
+                self.grab_set()
+        except Exception:
+            # podglad dziala tez bez blokowania glownego okna
+            pass
+
+    def _show_image(self, image: Image.Image) -> None:
+        display = self._fit_image(image)
+        self._image_ref = ctk.CTkImage(light_image=display, dark_image=display, size=display.size)
+        ctk.CTkLabel(self.preview_frame, text="", image=self._image_ref).pack(padx=8, pady=8)
+
     def _render_image_preview(self) -> None:
         with Image.open(self.file_path) as img:
-            display = self._fit_image(img.copy())
-        self._photo_ref = ImageTk.PhotoImage(display)
-        label = ctk.CTkLabel(self.preview_frame, text="", image=self._photo_ref)
-        label.pack(padx=8, pady=8)
+            # pierwsza ramka (TIFF wielostronicowy), z uwzglednieniem obrotu z EXIF
+            self._show_image(ImageOps.exif_transpose(img).convert("RGB"))
 
     def _render_pdf_preview(self) -> None:
         import pypdfium2 as pdfium
 
         pdf = pdfium.PdfDocument(str(self.file_path))
-        page_count = len(pdf)
-        ctk.CTkLabel(
-            self.preview_frame,
-            text=self.i18n.t("preview.pdf_info", pages=page_count),
-            font=ctk.CTkFont(weight="bold"),
-        ).pack(padx=8, pady=(8, 4), anchor="w")
-
-        page = pdf[0]
-        bitmap = page.render(scale=1.5)
-        pil_image = bitmap.to_pil()
-        pdf.close()
-
-        display = self._fit_image(pil_image)
-        self._photo_ref = ImageTk.PhotoImage(display)
-        label = ctk.CTkLabel(self.preview_frame, text="", image=self._photo_ref)
-        label.pack(padx=8, pady=8)
+        try:
+            page_count = len(pdf)
+            ctk.CTkLabel(
+                self.preview_frame,
+                text=self.i18n.t("preview.pdf_info", pages=page_count),
+                font=ctk.CTkFont(weight="bold"),
+            ).pack(padx=8, pady=(8, 4), anchor="w")
+            if page_count == 0:
+                return
+            pil_image = pdf[0].render(scale=1.5).to_pil()
+        finally:
+            pdf.close()
+        self._show_image(pil_image)
 
     def _fit_image(self, image: Image.Image, max_w: int = 720, max_h: int = 420) -> Image.Image:
         image.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
