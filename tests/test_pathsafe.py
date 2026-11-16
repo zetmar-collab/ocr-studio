@@ -171,3 +171,28 @@ def test_staging_uses_single_level_without_shared_parent(tmp_path, monkeypatch):
     pathsafe.ansi_safe_dir(unsafe)
     names = [p.name for p in Path(os.environ["ProgramData"]).iterdir()]
     assert "StudioOCR" not in names and any(n.startswith("StudioOCR-S-1-5-") for n in names)
+
+
+def test_directory_is_created_with_owner_only_acl_from_the_start(tmp_path):
+    # regresja z przegladu bezpieczenstwa: katalog nie moze miec okna z uprawnieniami dziedziczonymi
+    import win32security
+
+    target = tmp_path / "prywatny"
+    assert pathsafe._create_private_dir(target) is True
+    dacl = win32security.GetFileSecurity(str(target), win32security.DACL_SECURITY_INFORMATION).GetSecurityDescriptorDacl()
+    inherited_flag = 0x10  # INHERITED_ACE
+    aces = [dacl.GetAce(i) for i in range(dacl.GetAceCount())]
+    assert len(aces) == 2, "tylko uzytkownik i system"
+    assert not any(ace[0][1] & inherited_flag for ace in aces), "zadnych uprawnien odziedziczonych po rodzicu"
+    assert pathsafe._create_private_dir(target) is False  # drugi raz: juz istnieje
+
+
+def test_preexisting_staging_subdirectory_of_someone_else_is_refused(tmp_path, monkeypatch):
+    unsafe = staging_setup(tmp_path, monkeypatch)
+    (unsafe / "deu.traineddata").write_bytes(b"x")
+    pathsafe.ansi_safe_dir(unsafe)  # tworzy StudioOCR-<SID>	essdata
+    real = pathsafe._owned_by_current_user
+    # katalog nadrzedny nasz, ale podkatalog "tessdata" zalozyl ktos inny
+    monkeypatch.setattr(pathsafe, "_owned_by_current_user", lambda p: False if Path(p).name == "tessdata" else real(p))
+    with pytest.raises(UnsafePathError):
+        pathsafe.ansi_safe_dir(unsafe)

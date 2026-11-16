@@ -85,24 +85,53 @@ def _owned_by_current_user(path: Path) -> bool:
     return owner in allowed
 
 
-def _restrict_to_current_user(path: Path) -> None:
-    """Nadaje pelny dostep wylacznie biezacemu uzytkownikowi i systemowi, bez dziedziczenia."""
+def _owner_only_acl():
+    """DACL: pelny dostep tylko dla biezacego uzytkownika i konta systemowego, z dziedziczeniem do zawartosci."""
     import ntsecuritycon
     import win32security
 
-    user = _current_user_sid()
-    system = win32security.CreateWellKnownSid(win32security.WinLocalSystemSid)
     acl = win32security.ACL()
     inherit = ntsecuritycon.CONTAINER_INHERIT_ACE | ntsecuritycon.OBJECT_INHERIT_ACE
-    for sid in (user, system):
+    for sid in (_current_user_sid(), win32security.CreateWellKnownSid(win32security.WinLocalSystemSid)):
         acl.AddAccessAllowedAceEx(win32security.ACL_REVISION, inherit, ntsecuritycon.FILE_ALL_ACCESS, sid)
+    return acl
+
+
+def _create_private_dir(path: Path) -> bool:
+    """Tworzy katalog JUZ z DACL tylko dla wlasciciela - bez okna z uprawnieniami dziedziczonymi.
+
+    Zwraca True, gdy utworzono, False, gdy katalog juz istnial. Wczesniej katalog
+    powstawal z uprawnieniami po ProgramData i dopiero potem byl zabezpieczany;
+    w tym oknie inny uzytkownik mogl zalozyc w nim wlasny podkatalog.
+    """
+    import pywintypes
+    import win32file
+    import win32security
+
+    descriptor = win32security.SECURITY_DESCRIPTOR()
+    descriptor.SetSecurityDescriptorDacl(True, _owner_only_acl(), False)
+    attributes = pywintypes.SECURITY_ATTRIBUTES()
+    attributes.SECURITY_DESCRIPTOR = descriptor
+    try:
+        win32file.CreateDirectory(str(path), attributes)
+    except pywintypes.error as exc:
+        if exc.winerror == 183:  # ERROR_ALREADY_EXISTS
+            return False
+        raise OSError(f"nie mozna utworzyc katalogu roboczego: {exc}") from exc
+    return True
+
+
+def _restrict_to_current_user(path: Path) -> None:
+    """Zawęża DACL istniejacego katalogu (naszego) do wlasciciela i systemu, bez dziedziczenia."""
+    import win32security
+
     win32security.SetNamedSecurityInfo(
         str(path),
         win32security.SE_FILE_OBJECT,
         win32security.DACL_SECURITY_INFORMATION | win32security.PROTECTED_DACL_SECURITY_INFORMATION,
         None,
         None,
-        acl,
+        _owner_only_acl(),
         None,
     )
 
@@ -127,20 +156,26 @@ def _private_staging_dir(program_data: str, staging_name: str, leaf: str) -> Pat
 
     sid = win32security.ConvertSidToStringSid(_current_user_sid())
     base = Path(program_data) / f"{staging_name}-{sid}"
-    try:
-        os.mkdir(base)
-    except FileExistsError:
-        pass
+
+    created = _create_private_dir(base)
     if _is_reparse_point(base):
         raise OSError("katalog roboczy jest punktem reparse")
     if not _owned_by_current_user(base):
         raise OSError("katalog roboczy nalezy do innego uzytkownika")
-    _restrict_to_current_user(base)  # idempotentne; dzialamy juz na katalogu, ktory jest nasz
+    if not created:
+        _restrict_to_current_user(base)  # istnial, ale jest nasz - zawezamy uprawnienia
 
+    # Podkatalog: mkdir BEZ exist_ok. Jesli juz jest, musi byc nasz (ktos moglby go
+    # zalozyc, zanim katalog nadrzedny dostal DACL) i nie moze byc punktem reparse.
     staging = base / leaf
-    staging.mkdir(exist_ok=True)
+    try:
+        os.mkdir(staging)
+    except FileExistsError:
+        pass
     if _is_reparse_point(staging):
         raise OSError("podkatalog roboczy jest punktem reparse")
+    if not _owned_by_current_user(staging):
+        raise OSError("podkatalog roboczy nalezy do innego uzytkownika")
     return staging
 
 
