@@ -4,7 +4,7 @@ title: Studio OCR — polityka prywatności
 
 # Polityka prywatności — Studio OCR
 
-Ostatnia aktualizacja: 19 sierpnia 2026
+Ostatnia aktualizacja: 16 listopada 2026
 
 ## Krótko
 
@@ -17,24 +17,25 @@ wyłącznie na Twoim komputerze — nigdy nie są wysyłane na żaden serwer.
 Wszystkie dokumenty (obrazy, pliki PDF, skany) są przetwarzane lokalnie, przez
 silnik Tesseract wbudowany w aplikację i uruchamiany na Twoim komputerze.
 Rozpoznany tekst pojawia się w oknie aplikacji i trafia do pliku tylko wtedy,
-gdy sam wybierzesz eksport do TXT lub DOCX i wskażesz miejsce zapisu.
+gdy sam wybierzesz zapis do TXT, DOCX lub przeszukiwalnego PDF i wskażesz miejsce
+zapisu. Strony dokumentów są przekazywane silnikowi OCR bezpośrednio w pamięci —
+aplikacja nie zapisuje ich w plikach tymczasowych.
 
 Aplikacja zapisuje na dysku wyłącznie:
 
-- ustawienia interfejsu (motyw jasny/ciemny/systemowy oraz język PL/EN),
+- ustawienia (motyw jasny/ciemny/systemowy, język interfejsu PL/EN, wybrane
+  języki OCR i słownik pisowni oraz przełączniki opcji),
 - dodatkowe pliki językowe OCR i słowniki pisowni, jeśli je doinstalujesz,
-- słowa, które sam dodasz do własnego słownika pisowni,
-- tymczasowe pliki robocze potrzebne w trakcie rozpoznawania, usuwane po
-  zakończeniu operacji.
+- słowa, które sam dodasz do własnego słownika pisowni.
 
 Dane te trafiają do folderu aplikacji w Twoim profilu użytkownika
 (`%LOCALAPPDATA%\OCR Studio\`) i nie opuszczają urządzenia.
 
 ## Połączenia internetowe
 
-Silnik OCR oraz języki polski i angielski są wbudowane w aplikację, więc
-rozpoznawanie tekstu działa od razu po instalacji, **bez połączenia
-z internetem**.
+Silnik OCR, języki polski i angielski oraz słowniki pisowni polski i angielski
+są wbudowane w aplikację, więc rozpoznawanie tekstu i sprawdzanie pisowni działają
+od razu po instalacji, **bez połączenia z internetem**.
 
 Aplikacja łączy się z siecią wyłącznie wtedy, gdy sam poprosisz o doinstalowanie
 dodatkowego języka OCR lub słownika pisowni. Pobierane są wtedy publicznie
@@ -43,7 +44,8 @@ dostępne pliki z:
 - `github.com/tesseract-ocr/tessdata_best` — pliki językowe OCR,
 - `github.com/wooorm/dictionaries` — słowniki pisowni Hunspell.
 
-Są to zwykłe pobrania plików. Aplikacja nie wysyła przy tym Twoich dokumentów,
+Są to zwykłe pobrania plików, a aplikacja sprawdza ich sumę kontrolną, zanim ich użyje.
+Aplikacja nie wysyła przy tym Twoich dokumentów,
 tekstu ani żadnych informacji o Tobie — poza tym, co każda przeglądarka
 przekazuje przy pobieraniu pliku (adres IP, na poziomie serwera dostawcy).
 
